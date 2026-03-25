@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>WebRTC Push-to-Talk</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            margin-top: 50px;
+        }
+
+        #status {
+            margin-top: 20px;
+            font-size: 18px;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>Push-to-Talk (Hold Space)</h2>
+    <button id="start">Start Audio</button>
+    <div id="status">Not started</div>
+
+    <script>
+        let ws;
+        let pc;
+        let audioTrack;
+        let started = false;
+
+        const statusEl = document.getElementById("status");
+        const startBtn = document.getElementById("start");
+
+        startBtn.onclick = async () => {
+            if (started) return;
+            started = true;
+
+            ws = new WebSocket(`ws://${location.host}/ws`);
+
+            ws.onopen = () => {
+                statusEl.textContent = "Connected";
+            };
+
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioTrack = stream.getAudioTracks()[0];
+            audioTrack.enabled = false;
+
+            pc = new RTCPeerConnection({
+                iceServers: [
+                    { urls: "stun:192.168.198.130:3478" },
+                    {
+                        urls: "turn:192.168.198.130:3478",
+                        username: "",
+                        credential: ""
+                    }
+                ]
+            });
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    console.log(event.candidate.candidate);
+                }
+            };
+
+            stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+            pc.ontrack = (event) => {
+                const audio = new Audio();
+                audio.srcObject = event.streams[0];
+
+                // Fix autoplay policy
+                audio.play().catch(() => {
+                    console.log("Autoplay blocked until interaction");
+                });
+            };
+            // debug to make sure own stun / turn / ice is being used
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    ws.send(JSON.stringify({ candidate: event.candidate }));
+                }
+            };
+
+            ws.onmessage = async (msg) => {
+                const data = JSON.parse(msg.data);
+
+                if (data.offer) {
+                    await pc.setRemoteDescription(data.offer);
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    ws.send(JSON.stringify({ answer }));
+                }
+
+                if (data.answer) {
+                    await pc.setRemoteDescription(data.answer);
+                }
+
+                if (data.candidate) {
+                    await pc.addIceCandidate(data.candidate);
+                }
+            };
+
+            // Create offer after WS is ready
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            ws.send(JSON.stringify({ offer }));
+
+            statusEl.textContent = "Ready (hold space to talk)";
+        };
+
+        // Push-to-talk
+        let talking = false;
+
+        window.addEventListener("keydown", (e) => {
+            if (!started) return;
+
+            if (e.code === "Space" && !talking) {
+                audioTrack.enabled = true;
+                talking = true;
+                statusEl.textContent = "Talking...";
+            }
+        });
+
+        window.addEventListener("keyup", (e) => {
+            if (!started) return;
+
+            if (e.code === "Space") {
+                audioTrack.enabled = false;
+                talking = false;
+                statusEl.textContent = "Ready (hold space to talk)";
+            }
+        });
+    </script>
+</body>
+
+</html>
