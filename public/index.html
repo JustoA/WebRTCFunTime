@@ -175,16 +175,14 @@
             const stats = await getStats();
             if (!stats) return;
 
-            const now = Date.now();
-
-            statsEl.textContent = `
-Packets Sent:     ${stats.packetsSent ?? 0}
-Packets Received: ${stats.packetsReceived ?? 0}
-Packets Lost:     ${stats.packetsLost ?? 0}
-RTT (Latency):    ${(stats.rtt * 1000).toFixed(1)} ms
-Jitter:           ${stats.jitter?.toFixed(4)}
-  `;
-        }, 1000);
+                        statsEl.textContent = `
+            Packets Sent:     ${stats.packetsSent ?? 0}
+            Packets Received: ${stats.packetsReceived ?? 0}
+            Packets Lost:     ${stats.packetsLost ?? 0}
+            RTT (Latency):    ${(stats.rtt * 1000).toFixed(1)} ms
+            Jitter:           ${stats.jitter?.toFixed(4)}
+            `;
+                    }, 1000);
     </script>
 
 
