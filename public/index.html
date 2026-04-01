@@ -21,79 +21,88 @@
     <h2>Push-to-Talk (Hold Space)</h2>
     <button id="start">Start Audio</button>
     <div id="status">Not started</div>
+    <div id="stats" style="margin-top:20px; font-family: monospace;"></div>
 
     <script>
         let ws;
         let pc;
         let audioTrack;
         let started = false;
+        let COTURN_IP = "192.168.198.130";
 
         const statusEl = document.getElementById("status");
         const startBtn = document.getElementById("start");
 
         startBtn.onclick = async () => {
-            if (started) return;
+            startBtn.disabled = true;
             started = true;
 
+            // open a websocket connection to the backend
             ws = new WebSocket(`ws://${location.host}/ws`);
-
+            
+            // once its ready, tell user we are connected
             ws.onopen = () => {
                 statusEl.textContent = "Connected";
             };
-
+            
+            // get user audio
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             audioTrack = stream.getAudioTracks()[0];
+            //start muted!
             audioTrack.enabled = false;
 
+            // peer connection. Not sure if I have the TURN set up correctly right now. Should have coturn running on the ip here.
             pc = new RTCPeerConnection({
                 iceServers: [
-                    { urls: "stun:192.168.198.130:3478" },
+                    { urls: "stun:"+COTURN_IP+":3478" },
                     {
-                        urls: "turn:192.168.198.130:3478",
+                        urls: "turn:"+COTURN_IP+":3478",
                         username: "",
                         credential: ""
                     }
                 ]
             });
-
-            pc.onicecandidate = (event) => {
-                if (event.candidate) {
-                    console.log(event.candidate.candidate);
-                }
-            };
-
+            // get the user's tracks, and add them all to the peer connection.
             stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
+            // when we get a track from the server
             pc.ontrack = (event) => {
+                //play it!
                 const audio = new Audio();
                 audio.srcObject = event.streams[0];
 
-                // Fix autoplay policy
+                // thx https://stackoverflow.com/questions/71268739/how-do-i-catch-an-audio-domexception-caused-by-a-file-that-cannot-play
+
                 audio.play().catch(() => {
                     console.log("Autoplay blocked until interaction");
                 });
             };
-            // debug to make sure own stun / turn / ice is being used
+            // browser will try to find potential candidates for communication
             pc.onicecandidate = (event) => {
+                // send the candidate over to the server for distribution
                 if (event.candidate) {
+                    // debug to make sure own stun / turn / ice is being used
+                    console.log(event.candidate.candidate);
                     ws.send(JSON.stringify({ candidate: event.candidate }));
                 }
             };
-
+            
+            // we got data from the server. What the heck is it?
             ws.onmessage = async (msg) => {
                 const data = JSON.parse(msg.data);
-
+                
+                // could be a connection offer. We should answer it.
                 if (data.offer) {
                     await pc.setRemoteDescription(data.offer);
                     const answer = await pc.createAnswer();
                     await pc.setLocalDescription(answer);
                     ws.send(JSON.stringify({ answer }));
                 }
-
+                // if we got an answer, note it down
                 if (data.answer) {
                     await pc.setRemoteDescription(data.answer);
                 }
-
+                // same for candidates
                 if (data.candidate) {
                     await pc.addIceCandidate(data.candidate);
                 }
@@ -129,7 +138,56 @@
                 statusEl.textContent = "Ready (hold space to talk)";
             }
         });
+
+        async function getStats() {
+            // if we dont have a connection established we just exit
+            if (!pc) return;
+
+            const stats = await pc.getStats();
+            let result = {};
+
+            stats.forEach(report => {
+                // Outbound (what we send)
+                if (report.type === "outbound-rtp" && report.kind === "audio") {
+                    result.packetsSent = report.packetsSent;
+                    result.bytesSent = report.bytesSent;
+                }
+
+                // Inbound (what we receive)
+                if (report.type === "inbound-rtp" && report.kind === "audio") {
+                    result.packetsReceived = report.packetsReceived;
+                    result.packetsLost = report.packetsLost;
+                    result.jitter = report.jitter;
+                    result.bytesReceived = report.bytesReceived;
+                }
+
+                // Connection-level stats (latency)
+                if (report.type === "candidate-pair" && report.state === "succeeded") {
+                    result.rtt = report.currentRoundTripTime;
+                }
+            });
+
+            return result;
+        }
+        const statsEl = document.getElementById("stats");
+
+        setInterval(async () => {
+            const stats = await getStats();
+            if (!stats) return;
+
+            const now = Date.now();
+
+            statsEl.textContent = `
+Packets Sent:     ${stats.packetsSent ?? 0}
+Packets Received: ${stats.packetsReceived ?? 0}
+Packets Lost:     ${stats.packetsLost ?? 0}
+RTT (Latency):    ${(stats.rtt * 1000).toFixed(1)} ms
+Jitter:           ${stats.jitter?.toFixed(4)}
+  `;
+        }, 1000);
     </script>
+
+
 </body>
 
 </html>
