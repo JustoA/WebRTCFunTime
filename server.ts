@@ -18,21 +18,25 @@ Bun.serve({
     if (url.pathname === "/") {
       return new Response(Bun.file("./public/index.html"));
     }
+        if (url.pathname === "/main.js") {
+      return new Response(Bun.file("./public/main.js"));
+    }
 
     return new Response("Not found", { status: 404 });
   },
 
   websocket: {
-    open(ws: ServerWebSocket<undefined>) {
-      // i hate typescript
+    open(ws) {
       const id = uuidv4();
       clientsByUUID.set(id,ws);
       clientsByWebSocket.set(ws,id);
       console.log("New peer just joined. " + id)
       console.log("Clients: "+ Array.from(clientsByUUID.keys()))
-      
-      // give client its own id as well as the current list of connected people 
-      ws.send(JSON.stringify({ type: "init", id , peers: "guh"}));
+      console.log(ws.readyState)
+      // give client its own id as well as the current list of connected people.
+      // I guess we can't send messages in open(), so we rely on the client to reach out
+      // and ask who it is.
+     
 
       // let everyone know about the new peer
       for (const [otherId, client] of clientsByUUID){
@@ -44,8 +48,13 @@ Bun.serve({
     },
 
     message(ws, message) {
+      // console.log(message.toString())
       const data = JSON.parse(message.toString());
-      console.log(data)
+      //console.log(data)
+      if (data.initplease && clientsByWebSocket.has(ws)){
+        let clientUUID = clientsByWebSocket.get(ws)
+        ws.send(JSON.stringify({ type: "init",id: clientUUID, peers: Array.from(clientsByUUID.keys().filter(key => key!==clientUUID))}));
+      }
       if (data.to && clientsByUUID.has(data.to)){
           clientsByUUID.get(data.to)?.send(JSON.stringify(data));
       }
