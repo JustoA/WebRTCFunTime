@@ -50,7 +50,7 @@ Bun.serve({
     message(ws, message) {
       // console.log(message.toString())
       const data = JSON.parse(message.toString());
-      //console.log(data)
+      console.log(data)
       if (data.initplease && clientsByWebSocket.has(ws)){
         let clientUUID = clientsByWebSocket.get(ws)
         ws.send(JSON.stringify({ type: "init",id: clientUUID, peers: Array.from(clientsByUUID.keys().filter(key => key!==clientUUID))}));

@@ -6,20 +6,12 @@ const peers = new Map(); // peerId -> RTCPeerConnection
 let COTURN_IP = "192.168.198.130";
 const statusEl = document.getElementById("status");
 const startBtn = document.getElementById("start");
+let stream = null;
 
 function createPeer(peerId, stream) {
     console.log("Creating peer: " + peerId);
     // peer connection. Not sure if I have the TURN set up correctly right now. Should have coturn running on the ip here.
-    pc = new RTCPeerConnection({
-        // iceServers: [
-        //     { urls: "stun:" + COTURN_IP + ":3478" },
-        //     {
-        //         urls: "turn:" + COTURN_IP + ":3478",
-        //         username: "",
-        //         credential: ""
-        //     }
-        // ]
-    });
+    pc = new RTCPeerConnection(null);
     // get the user's tracks, and add them all to the peer connection.
     stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
@@ -72,7 +64,14 @@ async function startConnection(peerId, isInitiator, stream) {
 startBtn.onclick = async () => {
     startBtn.disabled = true;
     started = true;
+
+    // get user audio
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    audioTrack = stream.getAudioTracks()[0];
+    //start muted!
+    audioTrack.enabled = false;
     // open a websocket connection to the backend
+
     ws = new WebSocket(`ws://${location.host}/ws`);
 
     // once its ready, tell user we are connected
@@ -83,11 +82,9 @@ startBtn.onclick = async () => {
 
     // we got data from the server. What the heck is it?
     ws.onmessage = async (msg) => {
-        // get user audio
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        audioTrack = stream.getAudioTracks()[0];
-        //start muted!
-        audioTrack.enabled = false;
+        if (!stream){
+            console.log("Error: stream not initialized!")
+        }
         const data = JSON.parse(msg.data);
         console.log(data);
         // if its init, note down our id.
@@ -111,13 +108,21 @@ startBtn.onclick = async () => {
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
 
-                ws.send(JSON.stringify({ to: data.from, answer }));
+                ws.send(JSON.stringify({ to: data.from,
+                    from: myId,
+                     answer }));
             }
         }
         // if we got an answer, note it down
         if (data.answer) {
             const pc = peers.get(data.from)
+            if (pc){
             await pc.setRemoteDescription(data.answer);
+            }
+            else{
+                console.log("Error: Couldn't find peer "+ data.from +" in active list of peers!")
+                console.log(peers)
+            }
         }
         // same for candidates
         if (data.candidate) {
