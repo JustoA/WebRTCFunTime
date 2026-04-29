@@ -82,7 +82,7 @@ startBtn.onclick = async () => {
 
     // we got data from the server. What the heck is it?
     ws.onmessage = async (msg) => {
-        if (!stream){
+        if (!stream) {
             console.log("Error: stream not initialized!")
         }
         const data = JSON.parse(msg.data);
@@ -97,7 +97,7 @@ startBtn.onclick = async () => {
             }
         }
         // could be a connection offer. We should answer it.
-        if (data.offer) {
+        else if (data.offer) {
             console.log("Got offer")
             if (data.from) {
                 console.log("From: " + data.from)
@@ -108,26 +108,35 @@ startBtn.onclick = async () => {
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
 
-                ws.send(JSON.stringify({ to: data.from,
+                ws.send(JSON.stringify({
+                    to: data.from,
                     from: myId,
-                     answer }));
+                    answer
+                }));
             }
         }
-        // if we got an answer, note it down
+        // if we got an answer, set the remote description
         if (data.answer) {
             const pc = peers.get(data.from)
-            if (pc){
-            await pc.setRemoteDescription(data.answer);
+            if (pc) {
+                await pc.setRemoteDescription(data.answer);
             }
-            else{
-                console.log("Error: Couldn't find peer "+ data.from +" in active list of peers!")
+            else {
+                console.log("Error: Couldn't find peer " + data.from + " in active list of peers!")
                 console.log(peers)
             }
         }
         // same for candidates
-        if (data.candidate) {
+        else if (data.candidate) {
             const pc = peers.get(data.from);
             await pc.addIceCandidate(data.candidate);
+        }
+
+        if (data.type = "dropped"){
+            let deleted = peers.delete(data.id)
+            if (!deleted){
+                console.log("Warning: We were not aware of the peer that just dropped. ")
+            }
         }
     };
 
@@ -161,45 +170,54 @@ window.addEventListener("keyup", (e) => {
 
 async function getStats() {
     if (!peers) return;
-    const pc = Array.from(peers.values)[0];
+    let pc = Array.from(peers.values)[0];
+    if (pc) {
 
-    const stats = await pc.getStats();
-    let result = {};
+        const stats = await pc.getStats();
+        let result = {};
 
-    stats.forEach(report => {
-        // Outbound (what we send)
-        if (report.type === "outbound-rtp" && report.kind === "audio") {
-            result.packetsSent = report.packetsSent;
-            result.bytesSent = report.bytesSent;
-        }
+        stats.forEach(report => {
+            // Outbound (what we send)
+            if (report.type === "outbound-rtp" && report.kind === "audio") {
+                result.packetsSent = report.packetsSent;
+                result.bytesSent = report.bytesSent;
+            }
 
-        // Inbound (what we receive)
-        if (report.type === "inbound-rtp" && report.kind === "audio") {
-            result.packetsReceived = report.packetsReceived;
-            result.packetsLost = report.packetsLost;
-            result.jitter = report.jitter;
-            result.bytesReceived = report.bytesReceived;
-        }
+            // Inbound (what we receive)
+            if (report.type === "inbound-rtp" && report.kind === "audio") {
+                result.packetsReceived = report.packetsReceived;
+                result.packetsLost = report.packetsLost;
+                result.jitter = report.jitter;
+                result.bytesReceived = report.bytesReceived;
+            }
 
-        // Connection-level stats (latency)
-        if (report.type === "candidate-pair" && report.state === "succeeded") {
-            result.rtt = report.currentRoundTripTime;
-        }
-    });
+            // Connection-level stats (latency)
+            if (report.type === "candidate-pair" && report.state === "succeeded") {
+                result.rtt = report.currentRoundTripTime;
+            }
+        });
 
-    return result;
+        return result;
+    }
+    return "No stats, not connected"
 }
-// const statsEl = document.getElementById("stats");
+const statsEl = document.getElementById("stats");
+const connectedEl = document.getElementById("connected");
+setInterval(async () => {
+    const stats = await getStats();
+    if (!stats) return;
 
-// setInterval(async () => {
-//     const stats = await getStats();
-//     if (!stats) return;
+    statsEl.textContent = `
+    Packets Sent:     ${stats.packetsSent ?? 0}
+    Packets Received: ${stats.packetsReceived ?? 0}
+    Packets Lost:     ${stats.packetsLost ?? 0}
+    RTT (Latency):    ${(stats.rtt * 1000).toFixed(1)} ms
+    Jitter:           ${stats.jitter?.toFixed(4)}
+    `;
+}, 1000);
 
-//     statsEl.textContent = `
-//     Packets Sent:     ${stats.packetsSent ?? 0}
-//     Packets Received: ${stats.packetsReceived ?? 0}
-//     Packets Lost:     ${stats.packetsLost ?? 0}
-//     RTT (Latency):    ${(stats.rtt * 1000).toFixed(1)} ms
-//     Jitter:           ${stats.jitter?.toFixed(4)}
-//     `;
-// }, 1000);
+setInterval(async () => {
+    connectedEl.textContent = `
+    Connected peers:     ${Array.from(peers.keys())}
+    `;
+}, 1000);

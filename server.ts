@@ -32,7 +32,6 @@ Bun.serve({
       clientsByWebSocket.set(ws,id);
       console.log("New peer just joined. " + id)
       console.log("Clients: "+ Array.from(clientsByUUID.keys()))
-      console.log(ws.readyState)
       // give client its own id as well as the current list of connected people.
       // I guess we can't send messages in open(), so we rely on the client to reach out
       // and ask who it is.
@@ -50,7 +49,6 @@ Bun.serve({
     message(ws, message) {
       // console.log(message.toString())
       const data = JSON.parse(message.toString());
-      console.log(data)
       if (data.initplease && clientsByWebSocket.has(ws)){
         let clientUUID = clientsByWebSocket.get(ws)
         ws.send(JSON.stringify({ type: "init",id: clientUUID, peers: Array.from(clientsByUUID.keys().filter(key => key!==clientUUID))}));
@@ -66,6 +64,9 @@ Bun.serve({
         console.log("Dropped peer " + uuidToDelete)
         clientsByWebSocket.delete(ws)
         clientsByUUID.delete(uuidToDelete);
+        for (let remainingPeer of Array.from(clientsByUUID.values())){
+          remainingPeer.send(JSON.stringify({type: "dropped", id: uuidToDelete}))
+        }
       } 
     }
   }
