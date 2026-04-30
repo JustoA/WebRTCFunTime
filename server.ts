@@ -6,6 +6,10 @@ const clientsByWebSocket = new Map<ServerWebSocket<unknown>, string>();
 
 Bun.serve({
   port: 3000,
+  tls:{
+    cert: Bun.file("cert.pem"),
+    key: Bun.file("key.pem")
+  },
 
   fetch(req, server) {
     const url = new URL(req.url);

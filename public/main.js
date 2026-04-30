@@ -7,11 +7,15 @@ let COTURN_IP = "192.168.198.130";
 const statusEl = document.getElementById("status");
 const startBtn = document.getElementById("start");
 let stream = null;
-
+const statsEl = document.getElementById("stats");
+const connectedEl = document.getElementById("connected");
+const youareEl = document.getElementById("youare");
 function createPeer(peerId, stream) {
     console.log("Creating peer: " + peerId);
     // peer connection. Not sure if I have the TURN set up correctly right now. Should have coturn running on the ip here.
-    pc = new RTCPeerConnection(null);
+    pc = new RTCPeerConnection({
+
+    });
     // get the user's tracks, and add them all to the peer connection.
     stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
@@ -72,7 +76,7 @@ startBtn.onclick = async () => {
     audioTrack.enabled = false;
     // open a websocket connection to the backend
 
-    ws = new WebSocket(`ws://${location.host}/ws`);
+    ws = new WebSocket(`wss://${location.host}/ws`);
 
     // once its ready, tell user we are connected
     ws.onopen = () => {
@@ -95,6 +99,7 @@ startBtn.onclick = async () => {
                 let pc = await startConnection(peerId, true, stream);
                 peers.set(peerId, pc)
             }
+            youareEl.textContent = `You are: ${myId}`
         }
         // could be a connection offer. We should answer it.
         else if (data.offer) {
@@ -132,9 +137,9 @@ startBtn.onclick = async () => {
             await pc.addIceCandidate(data.candidate);
         }
 
-        if (data.type = "dropped"){
+        else if (data.type = "dropped") {
             let deleted = peers.delete(data.id)
-            if (!deleted){
+            if (!deleted) {
                 console.log("Warning: We were not aware of the peer that just dropped. ")
             }
         }
@@ -201,8 +206,7 @@ async function getStats() {
     }
     return "No stats, not connected"
 }
-const statsEl = document.getElementById("stats");
-const connectedEl = document.getElementById("connected");
+
 setInterval(async () => {
     const stats = await getStats();
     if (!stats) return;
