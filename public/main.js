@@ -175,7 +175,7 @@ window.addEventListener("keyup", (e) => {
 
 async function getStats() {
     if (!peers) return;
-    let pc = Array.from(peers.values)[0];
+    let pc = Array.from(peers.values())[0];
     if (pc) {
 
         const stats = await pc.getStats();
